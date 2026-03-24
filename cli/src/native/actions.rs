@@ -1162,12 +1162,22 @@ async fn auto_launch(state: &mut DaemonState) -> Result<(), String> {
         return Ok(());
     }
 
+    let storage_state = options.storage_state.clone();
     let mgr = BrowserManager::launch(options, engine.as_deref()).await?;
     state.reset_input_state();
     state.browser = Some(mgr);
     state.subscribe_to_browser_events();
     state.start_fetch_handler();
     state.update_stream_client().await;
+
+    if let Some(ref path) = storage_state {
+        if let Some(ref mgr) = state.browser {
+            if let Ok(session_id) = mgr.active_session_id() {
+                let _ = state::load_state(&mgr.client, session_id, path).await;
+            }
+        }
+    }
+
     try_auto_restore_state(state).await;
     Ok(())
 }
@@ -1424,6 +1434,13 @@ async fn handle_launch(cmd: &Value, state: &mut DaemonState) -> Result<Value, St
     state.subscribe_to_browser_events();
     state.start_fetch_handler();
     state.update_stream_client().await;
+
+    if let Some(path) = storage_state {
+        if let Some(ref mgr) = state.browser {
+            let session_id = mgr.active_session_id()?.to_string();
+            state::load_state(&mgr.client, &session_id, path).await?;
+        }
+    }
 
     {
         let df = state.domain_filter.read().await;
